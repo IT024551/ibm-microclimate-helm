@@ -1,0 +1,112 @@
+#*******************************************************************************
+# Licensed Materials - Property of IBM
+# "Restricted Materials of IBM"
+#
+# Copyright IBM Corp. 2017 All Rights Reserved
+#
+# US Government Users Restricted Rights - Use, duplication or disclosure
+# restricted by GSA ADP Schedule Contract with IBM Corp.
+#*******************************************************************************
+
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ template "name" .}}
+  labels:
+    app: {{ template "name" .}}
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        name: {{ template "name" .}}
+        chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+        release: "{{ .Release.Name }}"
+        heritage: "{{ .Release.Service }}"
+    spec:
+      imagePullSecrets:
+      - name: {{ .Values.image.imagePullSecret}}
+
+      volumes:
+      - name: shared-workspace
+      {{- if .Values.persistence.enabled }}
+        persistentVolumeClaim:
+          claimName: {{ template "name" .}}
+      {{- else }}
+        emptyDir: {}
+      {{- end }}
+      - name: docker-socket
+        hostPath:
+          path: /var/run/
+      - name: docker-graph-storage
+        emptyDir: {}
+
+      containers:
+
+      - name: microclimate-orion
+        image: {{ .Values.image.orion}}
+        imagePullPolicy: "{{ .Values.image.imagePullPolicy}}"
+        volumeMounts:
+        - name: shared-workspace
+          mountPath: /microclimate-workspace
+        ports:
+          - containerPort: 8888
+        livenessProbe:
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          httpGet:
+            path: /
+            port: 8888
+
+      - name: microclimate-portal
+        image: {{ .Values.image.portal}}
+        imagePullPolicy: "{{ .Values.image.imagePullPolicy}}"
+        volumeMounts:
+        - name: shared-workspace
+          mountPath: /microclimate-workspace
+        env:
+          - name: DOCKER_HOST
+            value: tcp://localhost:2375
+          - name: JMETER_IMAGE
+            value: {{ .Values.image.jmeter}}
+        ports:
+        - containerPort: 9090
+        livenessProbe:
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          httpGet:
+            path: /
+            port: 9090
+
+      - name: microclimate-file-watcher
+        image: {{ .Values.image.filewatcher}}
+        imagePullPolicy: "{{ .Values.image.imagePullPolicy}}"
+        volumeMounts:
+        - name: shared-workspace
+          mountPath: /microclimate-workspace
+        env:
+          - name: DOCKER_HOST
+            value: tcp://localhost:2375
+          - name: JMETER_IMAGE
+            value: {{ .Values.image.jmeter}}
+        command: ["/scripts/root-watcher.sh", "/microclimate-workspace"]
+
+        # This allows us to run Docker in Docker (DIND)
+        # in the microclimate-file-watcher container.
+      - name: dind-daemon
+        image: docker:1.12.6-dind
+        resources:
+            requests:
+                cpu: 20m
+                memory: 512Mi
+        securityContext:
+            privileged: true
+        volumeMounts:
+          - name: docker-graph-storage
+            mountPath: /var/lib/docker
+          - name: shared-workspace
+            mountPath: /microclimate-workspace
