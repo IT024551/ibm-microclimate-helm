@@ -8,6 +8,6 @@ entries:
     name: ibm-microclimate
     tillerVersion: '>=2.4.0'
     urls:
-    - ibm-microclimate-0.1.0-beta.tgz
+    - https://raw.githubusercontent.com/it024551/ibm-microclimate-helm/master/ibm-microclimate-0.1.0-beta.tgz
     version: 0.1.0-beta
 generated: 2018-03-10T23:32:52.451542866+01:00
